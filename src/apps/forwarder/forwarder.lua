@@ -1,7 +1,6 @@
-local lib = require("core.lib")
 local app = require("core.app")
-local buffer = require("core.buffer")
-local basic = require("apps.basic.basic_apps")
+local link = require("core.link")
+local ffi = require("ffi")
 
 local forwarder = {}
 
@@ -9,37 +8,38 @@ function forwarder:new()
    return setmetatable({}, {__index=forwarder})
 end
 
-local foo = { 'one', 'two', 'three' }
+-- Avoid "boxing" by pre-allocating a boxed ctype object
+-- and only manipulating the contents of it 
+local p = ffi.new("struct packet*[1]")
 function forwarder:push()
    local l_in = self.input.input
    local l_out = self.output.output
-   while not app.full(l_out) and not app.empty(l_in) do
-
-      -- Uncommenting the traversal of the foo table in different
-      -- sections causes vastly different behaviour of the app (either
-      -- fast, 300MB memory footprint or slow, 900MB footprint)
-
-      -- for k, v in ipairs(foo) do end
-      local p = app.receive(l_in)
-      -- for k, v in ipairs(foo) do end
-      app.transmit(l_out, p)
+   while not link.full(l_out) and not link.empty(l_in) do
+      p[0] = ffi.C.link_receive(l_in)
+      ffi.C.link_transmit(l_out, p[0])
    end
 end
 
-function forwarder:selftest()
-   app.apps.source = app.new(basic.Source:new())
-   app.apps.forward = app.new(forwarder:new())
-   app.apps.sink = app.new(basic.Sink:new())
+function forwarder.selftest()
+   local lib = require("core.lib")
+   local app = require("core.app")
+   local config = require("core.config")
+   local buffer = require("core.buffer")
+   local basic = require("apps.basic.basic_apps")
 
-   app.connect("source", "output", "forward", "input")
-   app.connect("forward", "output", "sink", "input")
-   app.relink()
+   local c = config.new()
+   config.app(c, 'source', basic.Source)
+   config.app(c, 'forward', forwarder)
+   config.app(c, 'sink', basic.Sink)
+
+   config.link(c, "source.output -> forward.input")
+   config.link(c, "forward.output -> sink.input")
+   app.configure(c)
    buffer.preallocate(5000)
-   local deadline = lib.timer(1e10)
-   require("jit.p").start('vl4')
-   repeat app.breathe() until deadline()
+   require("jit.opt").start("-sink")
+   require("jit.p").start('vl5')
+   app.main({duration = 5})
    require("jit.p").stop()
-   app.report()
 end
 
 return forwarder

@@ -22,3 +22,5 @@ struct link {
   } stats;
 };
 
+struct packet * link_receive(struct link *);
+void link_transmit(struct link *, struct packet *);
