@@ -186,6 +186,7 @@ function run (args)
 
    local dispatch_config = {}
    local dispatch_pws = {}
+   local vpls_bridge
    assert(config.vpls, "Missing vpls configuration")
    for vpls, vpls_config in pairs(config.vpls) do
       print("Creating VPLS instance "..vpls
@@ -265,7 +266,7 @@ function run (args)
 	 c_config.link(c, pws[1]..".ac -> "..acs[1].name..".rx")
 	 c_config.link(c, acs[1].name..".tx -> "..pws[1]..".ac")
       else
-	 local vpls_bridge = vpls.."_bridge"
+	 vpls_bridge = vpls.."_bridge"
 	 print("\tCreating bridge "..vpls_bridge)
 	 c_config.app(c, vpls_bridge,
 		      require("apps.bridge."..vpls_config.bridge.type).bridge,
@@ -294,7 +295,10 @@ function run (args)
       c_config.link(c, "dispatch.south -> uplink.rx")
    end
    app.configure(c)
-
+   if vpls_bridge then
+      engine.app_table[vpls_bridge]:post_config()
+   end
+   
    --require("jit.opt").start('sizemcode=64','maxmcode=2048','loopunroll=20','maxsnap=8000', 'maxrecord=8000')
    --require("jit.opt").start('loopunroll=20','maxsnap=8000', 'maxrecord=8000')
    
